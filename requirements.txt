@@ -1,5 +1,6 @@
-discord.py==2.3.2
-supabase==2.4.0
-python-dotenv==1.0.0
-aiohttp==3.9.1
-python-dateutil==2.8.2
+discord.py
+supabase
+python-dotenv
+aiohttp
+python-dateutil
+audioop-lts
