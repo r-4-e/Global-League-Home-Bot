@@ -55,6 +55,7 @@ COGS = [
     "cogs.logging_cog",
     "cogs.setup_cog",
     "cogs.help_cog",
+    "cogs.search",
 ]
 
 # Required bot permissions (value integer)
