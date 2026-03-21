@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from typing import Optional
 
@@ -250,6 +251,22 @@ class Elura(commands.Bot):
 # Entry point
 # ---------------------------------------------------------------------------
 
+async def keep_alive() -> None:
+    """Minimal HTTP server so Render sees an open port and keeps the service alive."""
+    from aiohttp import web
+
+    async def handle(request: web.Request) -> web.Response:
+        return web.Response(text="Elura is running.")
+
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 8080)))
+    await site.start()
+    log.info("Keep-alive server listening on port %s", os.environ.get("PORT", 8080))
+
+
 async def main() -> None:
     if not config.TOKEN:
         log.critical("TOKEN is not set. Cannot start.")
@@ -260,6 +277,8 @@ async def main() -> None:
     if not config.SUPABASE_URL or not config.SUPABASE_KEY:
         log.critical("SUPABASE_URL / SUPABASE_KEY not set. Cannot start.")
         sys.exit(1)
+
+    await keep_alive()
 
     bot = Elura()
     async with bot:
