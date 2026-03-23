@@ -59,6 +59,7 @@ COGS = [
     "cogs.welcome",
     "cogs.tickets",
     "cogs.info",
+    "cogs.economy",
 ]
 
 # Required bot permissions (value integer)
