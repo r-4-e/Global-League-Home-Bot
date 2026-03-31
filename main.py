@@ -61,8 +61,8 @@ COGS = [
     "cogs.info",
     "cogs.economy",
     "cogs.utility",
-    "cogs.fun",
     "cogs.about",
+    "cogs.warn_threshold",
 ]
 
 # Required bot permissions (value integer)
