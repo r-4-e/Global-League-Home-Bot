@@ -62,19 +62,19 @@ DEFAULT_CURRENCY     = "🪙"
 DEFAULT_CURRENCY_NAME = "coins"
 DEFAULT_START_BAL    = 100
 DEFAULT_COOLDOWNS    = {
-    "work":  3600,   # 1 hour
-    "crime": 7200,   # 2 hours
-    "rob":   3600,   # 1 hour
+    "work":  60,   # 1 hour
+    "crime": 300,   # 2 hours
+    "rob":   300,   # 1 hour
     "claim": 86400,  # 24 hours
 }
 DEFAULT_PAYOUTS = {
-    "work_min":  50,
-    "work_max":  200,
+    "work_min":  2,
+    "work_max":  9999,
     "crime_min": 100,
     "crime_max": 500,
     "crime_fail_chance": 0.35,
-    "rob_min":   50,
-    "rob_max":   300,
+    "rob_min":   1,
+    "rob_max":   100000000000,
     "rob_fail_chance":   0.40,
     "claim_amount":      100,
 }
