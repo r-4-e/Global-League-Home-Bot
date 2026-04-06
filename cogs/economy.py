@@ -69,7 +69,7 @@ DEFAULT_COOLDOWNS    = {
 }
 DEFAULT_PAYOUTS = {
     "work_min":  2,
-    "work_max":  9999,
+    "work_max":  999,
     "crime_min": 100,
     "crime_max": 500,
     "crime_fail_chance": 0.35,
