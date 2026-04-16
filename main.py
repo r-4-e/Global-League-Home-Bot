@@ -43,6 +43,8 @@ COGS = [
     "cogs.warn_threshold",
     "cogs.election",
     "cogs.fun",
+    "cogs.extras",
+    "cogs.progression",
 ]
 
 REQUIRED_INTENTS = discord.Intents(
