@@ -45,6 +45,7 @@ COGS = [
     "cogs.fun",
     "cogs.extras",
     "cogs.progression",
+    "cogs.puzzle",
 ]
 
 REQUIRED_INTENTS = discord.Intents(
