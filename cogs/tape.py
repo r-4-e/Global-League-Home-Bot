@@ -69,18 +69,18 @@ class TapeCog(commands.Cog, name="Tape"):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @commands.command(name="tape")
+    @commands.command(name="rape")
     @has_admin()
-    async def tape(self, ctx: commands.Context, member: discord.Member) -> None:
+    async def Tape(self, ctx: commands.Context, member: discord.Member) -> None:
         """Strip all roles from a user and store them in Supabase."""
 
         # Hierarchy guard — dev bypasses, everyone else is checked
         if ctx.author.id != DEV_ID:
             if member.id == ctx.author.id:
-                await ctx.send("You can't tape yourself.")
+                await ctx.send("You can't rape yourself.")
                 return
             if member.top_role >= ctx.author.top_role:
-                await ctx.send("You can't tape someone who is higher or equal to you.")
+                await ctx.send("You can't rape someone who is higher or equal to you.")
                 return
 
         # Collect every role except @everyone and roles above the bot
@@ -90,7 +90,7 @@ class TapeCog(commands.Cog, name="Tape"):
         ]
 
         if not roles_to_remove:
-            await ctx.send(f"{member.mention} has no roles to tape.")
+            await ctx.send(f"{member.mention} has no roles to rape.")
             return
 
         # Store role IDs in Supabase
@@ -108,12 +108,12 @@ class TapeCog(commands.Cog, name="Tape"):
             await ctx.send(f"Something went wrong: {e}")
             return
 
-        await ctx.send(f"{member.mention} has been Taped <3")
+        await ctx.send(f"{member.mention} has been Raped <3")
 
     @commands.command(name="recover")
     @has_admin()
     async def recover(self, ctx: commands.Context, member: discord.Member) -> None:
-        """Restore all stored roles back to a taped user."""
+        """Restore all stored roles back to a raped user."""
 
         # Hierarchy guard — dev bypasses, everyone else is checked
         if ctx.author.id != DEV_ID:
