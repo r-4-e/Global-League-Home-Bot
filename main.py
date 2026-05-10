@@ -32,7 +32,6 @@ COGS = [
     "cogs.automod",
     "cogs.logging_cog",
     "cogs.setup_cog",
-    "cogs.help_cog",
     "cogs.search",
     "cogs.welcome",
     "cogs.tickets",
