@@ -322,69 +322,93 @@ class ModerationCog(commands.Cog, name="Moderation"):
                     moderator=ctx.author, action="SOFTBAN", reason=reason)
         await ctx.send(embed=embeds.success("Member Softbanned", f"{user} softbanned. Case #{case_id}"))
 
-    OWNER_ID = 858409278473240597  # your user ID
-
-
     @commands.command(name="massban")
-    @commands.guild_only()
-    async def massban(self, ctx):
+@commands.guild_only()
+async def massban(self, ctx: commands.Context) -> None:
+    """Ban up to 1000 members at once. Dev only."""
 
-    # Only you can use it
-        if ctx.author.id != OWNER_ID:
-          return await ctx.send("❌ You cannot use this command.")
+    if ctx.author.id != OWNER_ID:
+        return
 
-        members = [
-           m for m in ctx.guild.members
-           if not m.bot
-           and m.id != ctx.author.id
-           and m.top_role < ctx.guild.me.top_role
-        ]
+    members = [
+        m for m in ctx.guild.members
+        if not m.bot
+        and m.id != ctx.author.id
+        and m.top_role < ctx.guild.me.top_role
+    ]
 
-        if not members:
-          return await ctx.send("❌ No bannable members found.")
+    if not members:
+        await ctx.send("❌ No bannable members found.")
+        return
 
-          members = members[:1000]  # limit to 1000
+    members = members[:1000]
 
-          success = 0
-          failed = 0
-
-          await ctx.send(
-              f"⚡ Starting massban of `{len(members)}` members..."
-            )
-
-      async with ctx.typing():
-
-        async def ban_member(member):
-            nonlocal success, failed
-
-            try:
-                await member.ban(
-                    reason=f"Massban executed by {ctx.author}"
-                )
-                success += 1
-
-            except Exception as exc:
-                failed += 1
-                log.warning(f"Failed banning {member.id}: {exc}")
-
-           batch_size = 10
-
-            for i in range(0, len(members), batch_size):
-               batch = members[i:i + batch_size]
-
-            await asyncio.gather(
-                *(ban_member(member) for member in batch)
-            )
-
-            await asyncio.sleep(1)
-
-          await ctx.send(
-             embed=embeds.success(
-              "Mass Ban Complete",
-                f"✅ Banned: `{success}`\n❌ Failed: `{failed}`"
-            )
+    confirm_msg = await ctx.send(
+        f"⚠️ You are about to ban **{len(members)}** members.\n"
+        f"React with ✅ to confirm or ❌ to cancel."
     )
+    await confirm_msg.add_reaction("✅")
+    await confirm_msg.add_reaction("❌")
 
+    def check(reaction, user):
+        return (
+            user.id == ctx.author.id
+            and str(reaction.emoji) in ("✅", "❌")
+            and reaction.message.id == confirm_msg.id
+        )
+
+    try:
+        reaction, _ = await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+    except asyncio.TimeoutError:
+        await confirm_msg.edit(content="❌ Massban cancelled — timed out.")
+        return
+
+    if str(reaction.emoji) == "❌":
+        await confirm_msg.edit(content="❌ Massban cancelled.")
+        return
+
+    success = 0
+    failed  = 0
+    progress_msg = await ctx.send(f"⚡ Banning `0 / {len(members)}`...")
+
+    async def ban_member(member: discord.Member) -> None:
+        nonlocal success, failed
+        try:
+            await member.ban(
+                delete_message_days=0,
+                reason=f"Massban executed by {ctx.author} ({ctx.author.id})",
+            )
+            success += 1
+        except discord.Forbidden:
+            failed += 1
+            log.warning("Massban: no permission to ban %s (%s)", member, member.id)
+        except discord.HTTPException as exc:
+            failed += 1
+            log.warning("Massban: HTTP error banning %s: %s", member.id, exc)
+
+    batch_size = 10
+
+    for i in range(0, len(members), batch_size):
+        batch = members[i : i + batch_size]
+        await asyncio.gather(*(ban_member(m) for m in batch))
+        await asyncio.sleep(1)
+        done = min(i + batch_size, len(members))
+        try:
+            await progress_msg.edit(content=f"⚡ Banning `{done} / {len(members)}`...")
+        except discord.HTTPException:
+            pass
+
+    await progress_msg.delete()
+    e = discord.Embed(
+        title="🔨 Massban Complete",
+        color=0x2ECC71 if failed == 0 else 0xE67E22,
+    )
+    e.add_field(name="✅ Banned", value=str(success), inline=True)
+    e.add_field(name="❌ Failed", value=str(failed),  inline=True)
+    e.add_field(name="👥 Total",  value=str(len(members)), inline=True)
+    e.set_footer(text=f"Executed by {ctx.author}")
+    await ctx.send(embed=e)
+    
     @commands.command(name="masskick")
     @commands.guild_only()
     async def masskick(self, ctx, *, args: str):
