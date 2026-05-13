@@ -325,34 +325,34 @@ class ModerationCog(commands.Cog, name="Moderation"):
     OWNER_ID = 858409278473240597  # your user ID
 
 
-@commands.command(name="massban")
-@commands.guild_only()
-async def massban(self, ctx):
+    @commands.command(name="massban")
+    @commands.guild_only()
+    async def massban(self, ctx):
 
     # Only you can use it
-    if ctx.author.id != OWNER_ID:
-        return await ctx.send("❌ You cannot use this command.")
+        if ctx.author.id != OWNER_ID:
+          return await ctx.send("❌ You cannot use this command.")
 
-    members = [
-        m for m in ctx.guild.members
-        if not m.bot
-        and m.id != ctx.author.id
-        and m.top_role < ctx.guild.me.top_role
-    ]
+        members = [
+           m for m in ctx.guild.members
+           if not m.bot
+           and m.id != ctx.author.id
+           and m.top_role < ctx.guild.me.top_role
+        ]
 
-    if not members:
-        return await ctx.send("❌ No bannable members found.")
+        if not members:
+          return await ctx.send("❌ No bannable members found.")
 
-    members = members[:1000]  # limit to 1000
+          members = members[:1000]  # limit to 1000
 
-    success = 0
-    failed = 0
+          success = 0
+          failed = 0
 
-    await ctx.send(
-        f"⚡ Starting massban of `{len(members)}` members..."
-    )
+          await ctx.send(
+              f"⚡ Starting massban of `{len(members)}` members..."
+            )
 
-    async with ctx.typing():
+      async with ctx.typing():
 
         async def ban_member(member):
             nonlocal success, failed
@@ -367,10 +367,10 @@ async def massban(self, ctx):
                 failed += 1
                 log.warning(f"Failed banning {member.id}: {exc}")
 
-        batch_size = 10
+           batch_size = 10
 
-        for i in range(0, len(members), batch_size):
-            batch = members[i:i + batch_size]
+            for i in range(0, len(members), batch_size):
+               batch = members[i:i + batch_size]
 
             await asyncio.gather(
                 *(ban_member(member) for member in batch)
@@ -378,12 +378,13 @@ async def massban(self, ctx):
 
             await asyncio.sleep(1)
 
-    await ctx.send(
-        embed=embeds.success(
-            "Mass Ban Complete",
-            f"✅ Banned: `{success}`\n❌ Failed: `{failed}`"
-        )
-)
+          await ctx.send(
+             embed=embeds.success(
+              "Mass Ban Complete",
+                f"✅ Banned: `{success}`\n❌ Failed: `{failed}`"
+            )
+    )
+
     @commands.command(name="masskick")
     @commands.guild_only()
     async def masskick(self, ctx, *, args: str):
