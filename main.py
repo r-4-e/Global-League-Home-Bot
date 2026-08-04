@@ -46,6 +46,7 @@ COGS = [
     "cogs.progression",
     "cogs.mystery_event",
     "cogs.tape",
+    "cogs.verification",  # NEW
 ]
 
 REQUIRED_INTENTS = discord.Intents(
@@ -68,7 +69,6 @@ class GlobalLeagueBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         log.info("▶ setup_hook starting…")
-
         log.info("Connecting to Supabase…")
         await db.connect()
         await db.upsert_guild_config({"guild_id": config.GUILD_ID})
@@ -76,9 +76,9 @@ class GlobalLeagueBot(commands.Bot):
         for cog in COGS:
             try:
                 await self.load_extension(cog)
-                log.info("  ✓ Loaded cog: %s", cog)
+                log.info(" ✓ Loaded cog: %s", cog)
             except Exception as exc:
-                log.error("  ✗ Failed to load cog %s: %s", cog, exc)
+                log.error(" ✗ Failed to load cog %s: %s", cog, exc)
 
         asyncio.create_task(expired_punishment_checker(self), name="expired_punishment_checker")
         asyncio.create_task(log_maintenance_task(self), name="log_maintenance_task")
@@ -86,12 +86,14 @@ class GlobalLeagueBot(commands.Bot):
 
     async def on_ready(self) -> None:
         log.info("━" * 50)
-        log.info("  Global League Bot is online!")
-        log.info("  Logged in as : %s (%s)", self.user, self.user.id)
-        log.info("  Prefix       : gl.")
-        log.info("  Guild        : %s", config.GUILD_ID)
+        log.info(" Global League Bot is online!")
+        log.info(" Logged in as : %s (%s)", self.user, self.user.id)
+        log.info(" Prefix : gl.")
+        log.info(" Guild : %s", config.GUILD_ID)
         log.info("━" * 50)
+
         await self._run_startup_validation()
+
         await self.change_presence(
             activity=discord.Activity(type=discord.ActivityType.watching, name="Global League | gl.help")
         )
@@ -99,46 +101,57 @@ class GlobalLeagueBot(commands.Bot):
     async def _run_startup_validation(self) -> None:
         guild = self.get_guild(config.GUILD_ID)
         if guild is None:
-            log.error("  ✗ Guild %s not found!", config.GUILD_ID)
+            log.error(" ✗ Guild %s not found!", config.GUILD_ID)
             return
+
         bot_member = guild.me
         required_perms = [
-            ("ban_members",      "Ban Members"),
-            ("kick_members",     "Kick Members"),
+            ("ban_members", "Ban Members"),
+            ("kick_members", "Kick Members"),
             ("moderate_members", "Moderate Members"),
-            ("manage_roles",     "Manage Roles"),
-            ("manage_messages",  "Manage Messages"),
-            ("manage_channels",  "Manage Channels"),
+            ("manage_roles", "Manage Roles"),
+            ("manage_messages", "Manage Messages"),
+            ("manage_channels", "Manage Channels"),
             ("manage_nicknames", "Manage Nicknames"),
         ]
         for perm, label in required_perms:
             if not getattr(bot_member.guild_permissions, perm, False):
-                log.warning("  ⚠ Missing permission: %s", label)
+                log.warning(" ⚠ Missing permission: %s", label)
 
         cfg = await db.get_guild_config(guild.id)
         if not cfg or not cfg.get("setup_complete"):
-            log.warning("  ⚠ Setup not complete — run gl.setup")
+            log.warning(" ⚠ Setup not complete — run gl.setup")
             return
 
         log_ch_id = cfg.get("log_channel_id")
         if log_ch_id:
             ch = guild.get_channel(log_ch_id)
             if ch is None:
-                log.warning("  ⚠ Log channel not found.")
+                log.warning(" ⚠ Log channel not found.")
             else:
-                log.info("  ✓ Log channel: #%s", ch.name)
+                log.info(" ✓ Log channel: #%s", ch.name)
         else:
-            log.warning("  ⚠ Log channel not configured.")
+            log.warning(" ⚠ Log channel not configured.")
 
         muted_role_id = cfg.get("muted_role_id")
         if muted_role_id:
             role = guild.get_role(muted_role_id)
             if role is None:
-                log.warning("  ⚠ Muted role not found.")
+                log.warning(" ⚠ Muted role not found.")
             else:
-                log.info("  ✓ Muted role: @%s", role.name)
+                log.info(" ✓ Muted role: @%s", role.name)
         else:
-            log.warning("  ⚠ Muted role not configured.")
+            log.warning(" ⚠ Muted role not configured.")
+
+        # NEW: verification config sanity check
+        if not config.VERIFIED_ROLE_ID:
+            log.warning(" ⚠ VERIFIED_ROLE_ID not set — verification will not work.")
+        elif guild.get_role(config.VERIFIED_ROLE_ID) is None:
+            log.warning(" ⚠ VERIFIED_ROLE_ID doesn't match any role in this guild.")
+        if not config.PUBLIC_BASE_URL:
+            log.warning(" ⚠ PUBLIC_BASE_URL/RENDER_EXTERNAL_URL not set — verification links will be broken.")
+        if not config.DISCORD_CLIENT_ID or not config.DISCORD_CLIENT_SECRET:
+            log.warning(" ⚠ DISCORD_CLIENT_ID/SECRET not set — OAuth2 verification will fail.")
 
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
         if isinstance(error, commands.CommandNotFound):
@@ -158,28 +171,30 @@ class GlobalLeagueBot(commands.Bot):
 
 
 # ---------------------------------------------------------------------------
-# Keep-alive server for Render
+# Keep-alive + verification server for Render
 # ---------------------------------------------------------------------------
-
-async def keep_alive() -> None:
+async def keep_alive(bot: GlobalLeagueBot) -> None:
     from aiohttp import web
+
+    from verify_web import register_verify_routes  # NEW
 
     async def handle(request: web.Request) -> web.Response:
         return web.Response(text="Global League Bot is running.")
 
     app = web.Application()
     app.router.add_get("/", handle)
+    register_verify_routes(app, bot)  # NEW: adds /verify/{token} and /callback
+
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 8080)))
     await site.start()
-    log.info("Keep-alive server listening on port %s", os.environ.get("PORT", 8080))
+    log.info("Keep-alive + verification server listening on port %s", os.environ.get("PORT", 8080))
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-
 async def main() -> None:
     if not config.TOKEN:
         log.critical("TOKEN is not set.")
@@ -191,8 +206,8 @@ async def main() -> None:
         log.critical("SUPABASE credentials not set.")
         sys.exit(1)
 
-    await keep_alive()
     bot = GlobalLeagueBot()
+    await keep_alive(bot)  # CHANGED: bot is created first and passed in
     async with bot:
         await bot.start(config.TOKEN)
 
