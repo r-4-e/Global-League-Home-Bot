@@ -1,19 +1,19 @@
 """
 database.py — Async Supabase wrapper for Elura.
-
-All DB calls are async.  A single module-level `db` instance is
+All DB calls are async. A single module-level `db` instance is
 imported everywhere else so there is exactly one connection pool.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from supabase import acreate_client, AsyncClient
 
-from config import SUPABASE_URL, SUPABASE_KEY, GUILD_ID
+from config import SUPABASE_URL, SUPABASE_KEY, GUILD_ID, IP_SALT
 
 log = logging.getLogger(__name__)
 
@@ -23,78 +23,93 @@ log = logging.getLogger(__name__)
 SCHEMA_SQL = """
 -- Guilds / server config
 CREATE TABLE IF NOT EXISTS guilds (
-    guild_id          BIGINT PRIMARY KEY,
-    log_channel_id    BIGINT,
-    muted_role_id     BIGINT,
-    automod_enabled   BOOLEAN DEFAULT TRUE,
-    setup_complete    BOOLEAN DEFAULT FALSE,
-    created_at        TIMESTAMPTZ DEFAULT NOW()
+    guild_id BIGINT PRIMARY KEY,
+    log_channel_id BIGINT,
+    muted_role_id BIGINT,
+    automod_enabled BOOLEAN DEFAULT TRUE,
+    setup_complete BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Users
 CREATE TABLE IF NOT EXISTS users (
-    id         BIGSERIAL PRIMARY KEY,
-    user_id    BIGINT NOT NULL,
-    guild_id   BIGINT NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    guild_id BIGINT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, guild_id)
 );
 
 -- Moderation cases
 CREATE TABLE IF NOT EXISTS cases (
-    case_id       BIGSERIAL PRIMARY KEY,
-    guild_id      BIGINT NOT NULL,
-    user_id       BIGINT NOT NULL,
-    moderator_id  BIGINT NOT NULL,
-    action        TEXT NOT NULL,
-    reason        TEXT,
-    timestamp     TIMESTAMPTZ DEFAULT NOW(),
-    active        BOOLEAN DEFAULT TRUE,
-    expires_at    TIMESTAMPTZ,
-    extra_data    JSONB
+    case_id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    moderator_id BIGINT NOT NULL,
+    action TEXT NOT NULL,
+    reason TEXT,
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    active BOOLEAN DEFAULT TRUE,
+    expires_at TIMESTAMPTZ,
+    extra_data JSONB
 );
-
 CREATE INDEX IF NOT EXISTS idx_cases_guild_user ON cases(guild_id, user_id);
-CREATE INDEX IF NOT EXISTS idx_cases_active     ON cases(active, expires_at) WHERE active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_cases_active ON cases(active, expires_at) WHERE active = TRUE;
 
 -- Staff notes
 CREATE TABLE IF NOT EXISTS notes (
-    note_id      BIGSERIAL PRIMARY KEY,
-    guild_id     BIGINT NOT NULL,
-    user_id      BIGINT NOT NULL,
+    note_id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
     moderator_id BIGINT NOT NULL,
-    content      TEXT NOT NULL,
-    timestamp    TIMESTAMPTZ DEFAULT NOW()
+    content TEXT NOT NULL,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Permission overrides
 CREATE TABLE IF NOT EXISTS permissions_override (
-    id        BIGSERIAL PRIMARY KEY,
-    guild_id  BIGINT NOT NULL,
-    role_id   BIGINT NOT NULL,
-    command   TEXT NOT NULL,
-    allowed   BOOLEAN DEFAULT TRUE,
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    role_id BIGINT NOT NULL,
+    command TEXT NOT NULL,
+    allowed BOOLEAN DEFAULT TRUE,
     UNIQUE(guild_id, role_id, command)
 );
 
 -- Automod rules
 CREATE TABLE IF NOT EXISTS auto_mod_rules (
-    id         BIGSERIAL PRIMARY KEY,
-    guild_id   BIGINT NOT NULL,
-    rule_type  TEXT NOT NULL,
-    enabled    BOOLEAN DEFAULT TRUE,
-    config     JSONB,
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    rule_type TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    config JSONB,
     UNIQUE(guild_id, rule_type)
 );
 
 -- Help stats
 CREATE TABLE IF NOT EXISTS help_stats (
-    id        BIGSERIAL PRIMARY KEY,
-    guild_id  BIGINT NOT NULL,
-    command   TEXT NOT NULL,
-    uses      INT DEFAULT 1,
+    id BIGSERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    command TEXT NOT NULL,
+    uses INT DEFAULT 1,
     last_used TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(guild_id, command)
+);
+
+-- Anti-alt verification
+CREATE TABLE IF NOT EXISTS verify_tokens (
+    token TEXT PRIMARY KEY,
+    discord_id BIGINT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN DEFAULT FALSE
+);
+CREATE INDEX IF NOT EXISTS idx_verify_tokens_discord ON verify_tokens(discord_id);
+
+CREATE TABLE IF NOT EXISTS verified_ips (
+    ip_hash TEXT PRIMARY KEY,
+    discord_id BIGINT NOT NULL,
+    verified_at TIMESTAMPTZ DEFAULT NOW()
 );
 """
 
@@ -102,7 +117,6 @@ CREATE TABLE IF NOT EXISTS help_stats (
 # ---------------------------------------------------------------------------
 # Database class
 # ---------------------------------------------------------------------------
-
 class Database:
     """Thin async wrapper around supabase-py AsyncClient."""
 
@@ -110,7 +124,6 @@ class Database:
         self._client: Optional[AsyncClient] = None
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
-
     async def connect(self) -> None:
         self._client = await acreate_client(SUPABASE_URL, SUPABASE_KEY)
         log.info("Supabase async client ready.")
@@ -121,8 +134,81 @@ class Database:
             raise RuntimeError("Database.connect() has not been called yet.")
         return self._client
 
-    # ── Guild config ─────────────────────────────────────────────────────────
+    # ── Anti-alt verification ────────────────────────────────────────────────
+    @staticmethod
+    def hash_ip(ip: str) -> str:
+        return hashlib.sha256((IP_SALT + ip).encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def is_expired(iso_ts: str) -> bool:
+        try:
+            expires = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return True
+        return datetime.now(timezone.utc) >= expires
+
+    async def create_verify_token(self, token: str, discord_id: int, ttl_seconds: int) -> bool:
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
+        try:
+            await (
+                self.client.table("verify_tokens")
+                .insert({"token": token, "discord_id": discord_id, "expires_at": expires_at, "used": False})
+                .execute()
+            )
+            return True
+        except Exception as exc:
+            log.error("create_verify_token: %s", exc)
+            return False
+
+    async def get_verify_token(self, token: str) -> Optional[dict]:
+        try:
+            res = (
+                await self.client.table("verify_tokens")
+                .select("*")
+                .eq("token", token)
+                .maybe_single()
+                .execute()
+            )
+            return res.data
+        except Exception as exc:
+            log.error("get_verify_token: %s", exc)
+            return None
+
+    async def mark_verify_token_used(self, token: str) -> bool:
+        try:
+            await self.client.table("verify_tokens").update({"used": True}).eq("token", token).execute()
+            return True
+        except Exception as exc:
+            log.error("mark_verify_token_used: %s", exc)
+            return False
+
+    async def find_verified_ip(self, ip_hash: str) -> Optional[dict]:
+        try:
+            res = (
+                await self.client.table("verified_ips")
+                .select("*")
+                .eq("ip_hash", ip_hash)
+                .maybe_single()
+                .execute()
+            )
+            return res.data
+        except Exception as exc:
+            log.error("find_verified_ip: %s", exc)
+            return None
+
+    async def store_verified_ip(self, ip_hash: str, discord_id: str) -> bool:
+        try:
+            await (
+                self.client.table("verified_ips")
+                .upsert({"ip_hash": ip_hash, "discord_id": discord_id}, on_conflict="ip_hash")
+                .execute()
+            )
+            return True
+        except Exception as exc:
+            log.error("store_verified_ip: %s", exc)
+            return False
+
+    # ── Guild config ─────────────────────────────────────────────────────────
     async def get_guild_config(self, guild_id: int = GUILD_ID) -> Optional[dict]:
         try:
             res = (
@@ -151,7 +237,6 @@ class Database:
             return False
 
     # ── Case management ──────────────────────────────────────────────────────
-
     async def create_case(
         self,
         user_id: int,
@@ -164,18 +249,19 @@ class Database:
     ) -> Optional[int]:
         """Insert a case and return its case_id."""
         payload: dict[str, Any] = {
-            "guild_id":     guild_id,
-            "user_id":      user_id,
+            "guild_id": guild_id,
+            "user_id": user_id,
             "moderator_id": moderator_id,
-            "action":       action,
-            "reason":       reason,
-            "active":       True,
-            "timestamp":    datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "reason": reason,
+            "active": True,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if expires_at:
             payload["expires_at"] = expires_at.isoformat()
         if extra_data:
             payload["extra_data"] = extra_data
+
         try:
             res = await self.client.table("cases").insert(payload).execute()
             if res.data:
@@ -202,6 +288,7 @@ class Database:
                 .execute()
             )
             total = count_res.count or 0
+
             res = (
                 await self.client.table("cases")
                 .select("*")
@@ -250,7 +337,6 @@ class Database:
             return []
 
     # ── Automod rules ────────────────────────────────────────────────────────
-
     async def get_automod_rules(self, guild_id: int = GUILD_ID) -> list[dict]:
         try:
             res = (
@@ -276,10 +362,10 @@ class Database:
                 self.client.table("auto_mod_rules")
                 .upsert(
                     {
-                        "guild_id":  guild_id,
+                        "guild_id": guild_id,
                         "rule_type": rule_type,
-                        "enabled":   enabled,
-                        "config":    config or {},
+                        "enabled": enabled,
+                        "config": config or {},
                     },
                     on_conflict="guild_id,rule_type",
                 )
@@ -291,7 +377,6 @@ class Database:
             return False
 
     # ── Help stats ───────────────────────────────────────────────────────────
-
     async def increment_help_stat(
         self, command: str, guild_id: int = GUILD_ID
     ) -> None:
@@ -317,9 +402,9 @@ class Database:
                     self.client.table("help_stats")
                     .insert(
                         {
-                            "guild_id":  guild_id,
-                            "command":   command,
-                            "uses":      1,
+                            "guild_id": guild_id,
+                            "command": command,
+                            "uses": 1,
                             "last_used": now_iso,
                         }
                     )
@@ -329,7 +414,6 @@ class Database:
             log.error("increment_help_stat: %s", exc)
 
     # ── Notes ─────────────────────────────────────────────────────────────────
-
     async def add_note(
         self,
         user_id: int,
@@ -343,11 +427,11 @@ class Database:
                 self.client.table("notes")
                 .insert(
                     {
-                        "guild_id":     guild_id,
-                        "user_id":      user_id,
+                        "guild_id": guild_id,
+                        "user_id": user_id,
                         "moderator_id": moderator_id,
-                        "content":      content,
-                        "timestamp":    datetime.now(timezone.utc).isoformat(),
+                        "content": content,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
                 .execute()
@@ -393,7 +477,6 @@ class Database:
             return False
 
     # ── Permissions override ──────────────────────────────────────────────────
-
     async def set_permission_override(
         self,
         role_id: int,
@@ -408,9 +491,9 @@ class Database:
                 .upsert(
                     {
                         "guild_id": guild_id,
-                        "role_id":  role_id,
-                        "command":  command,
-                        "allowed":  allowed,
+                        "role_id": role_id,
+                        "command": command,
+                        "allowed": allowed,
                     },
                     on_conflict="guild_id,role_id,command",
                 )
@@ -471,7 +554,6 @@ class Database:
             return None
 
     # ── User ─────────────────────────────────────────────────────────────────
-
     async def ensure_user(self, user_id: int, guild_id: int = GUILD_ID) -> None:
         try:
             await (
@@ -487,4 +569,4 @@ class Database:
 
 
 # Module-level singleton
-db = Database()
+db = Database()       
