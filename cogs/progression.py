@@ -36,33 +36,9 @@ LOTTERY_RULE  = "progression_lottery"
 XP_PER_MESSAGE = 5
 XP_COOLDOWN    = 60  # seconds between XP gains per user
 
-LEVELS = [
-    (0,    "Rookie"),
-    (100,  "Newcomer"),
-    (300,  "Member"),
-    (600,  "Regular"),
-    (1000, "Veteran"),
-    (1500, "Elite"),
-    (2500, "Champion"),
-    (4000, "Legend"),
-    (6000, "Mythic"),
-    (10000,"Godlike"),
-]
-
-
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
-
-async def _get_xp_data(guild_id: int) -> dict:
-    rules = await db.get_automod_rules(guild_id)
-    for r in rules:
-        if r.get("rule_type") == XP_RULE:
-            return r.get("config") or {}
-    return {}
-
-async def _save_xp_data(guild_id: int, data: dict) -> None:
-    await db.upsert_automod_rule(XP_RULE, True, data, guild_id)
 
 async def _get_worker_data(guild_id: int) -> dict:
     rules = await db.get_automod_rules(guild_id)
@@ -96,33 +72,6 @@ async def _save_lottery(guild_id: int, data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Level helper
-# ---------------------------------------------------------------------------
-
-def _get_level(xp: int) -> tuple[int, str, int, int]:
-    """Returns (level, title, xp_for_current, xp_for_next)."""
-    current_level = 0
-    current_title = LEVELS[0][1]
-    for i, (req, title) in enumerate(LEVELS):
-        if xp >= req:
-            current_level = i
-            current_title = title
-        else:
-            break
-    next_req = LEVELS[current_level + 1][0] if current_level + 1 < len(LEVELS) else None
-    curr_req = LEVELS[current_level][0]
-    return current_level, current_title, curr_req, next_req
-
-
-def _xp_bar(xp: int, curr_req: int, next_req: int, length: int = 12) -> str:
-    if next_req is None:
-        return "█" * length + " MAX"
-    progress = (xp - curr_req) / (next_req - curr_req)
-    filled   = round(progress * length)
-    return "█" * filled + "░" * (length - filled)
-
-
-# ---------------------------------------------------------------------------
 # Cog
 # ---------------------------------------------------------------------------
 
@@ -132,106 +81,7 @@ class ProgressionCog(commands.Cog, name="Progression"):
         self.bot       = bot
         self._xp_cd:   dict[int, float] = {}  # user_id → last_xp_time
 
-    # ── XP listener ───────────────────────────────────────────────────────
-
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if not message.guild or message.author.bot:
-            return
-        if message.guild.id != GUILD_ID:
-            return
-
-        uid = message.author.id
-        now = time.monotonic()
-
-        # Cooldown check
-        if now - self._xp_cd.get(uid, 0) < XP_COOLDOWN:
-            return
-        self._xp_cd[uid] = now
-
-        # Add XP
-        xp_data  = await _get_xp_data(message.guild.id)
-        uid_str  = str(uid)
-        old_xp   = xp_data.get(uid_str, 0)
-        new_xp   = old_xp + XP_PER_MESSAGE
-        xp_data[uid_str] = new_xp
-        await _save_xp_data(message.guild.id, xp_data)
-
-        # Level up check
-        old_level, _, _, _ = _get_level(old_xp)
-        new_level, new_title, _, _ = _get_level(new_xp)
-        if new_level > old_level:
-            try:
-                e = discord.Embed(
-                    title="🎉 Level Up!",
-                    description=(
-                        f"{message.author.mention} reached **Level {new_level}** — **{new_title}**!\n"
-                        f"Total XP: **{new_xp:,}**"
-                    ),
-                    color=0xF1C40F,
-                )
-                await message.channel.send(embed=e)
-            except discord.Forbidden:
-                pass
-
-    # ── gl.level ──────────────────────────────────────────────────────────
-
-    @commands.command(name="level")
-    @commands.guild_only()
-    async def level(self, ctx, user: discord.Member = None):
-        """View your level and XP. Usage: gl.level [@user]"""
-        target  = user or ctx.author
-        xp_data = await _get_xp_data(ctx.guild.id)
-        xp      = xp_data.get(str(target.id), 0)
-
-        level, title, curr_req, next_req = _get_level(xp)
-        bar = _xp_bar(xp, curr_req, next_req)
-
-        # Rank
-        sorted_users = sorted(xp_data.items(), key=lambda x: x[1], reverse=True)
-        rank = next((i+1 for i, (uid, _) in enumerate(sorted_users) if uid == str(target.id)), "N/A")
-
-        e = discord.Embed(
-            title=f"⭐ {target.display_name}",
-            color=0xF1C40F,
-        )
-        e.set_thumbnail(url=target.display_avatar.url)
-        e.add_field(name="🏅 Level",  value=f"**{level}** — {title}",    inline=True)
-        e.add_field(name="🏆 Rank",   value=f"**#{rank}**",              inline=True)
-        e.add_field(name="✨ XP",     value=f"**{xp:,}**",               inline=True)
-        if next_req:
-            e.add_field(
-                name=f"📊 Progress to Level {level+1}",
-                value=f"`{bar}` {xp-curr_req:,} / {next_req-curr_req:,} XP",
-                inline=False,
-            )
-        else:
-            e.add_field(name="📊 Progress", value="`████████████` **MAX LEVEL**", inline=False)
-
-        e.set_footer(text=f"Earn XP by chatting  •  1 message = {XP_PER_MESSAGE} XP (60s cooldown)")
-        await ctx.send(embed=e)
-
-    @commands.command(name="leaderboard_xp")
-    @commands.guild_only()
-    async def leaderboard_xp(self, ctx):
-        """Top 10 XP leaderboard."""
-        xp_data = await _get_xp_data(ctx.guild.id)
-        sorted_users = sorted(xp_data.items(), key=lambda x: x[1], reverse=True)[:10]
-
-        e = discord.Embed(title="⭐ XP Leaderboard", color=0xF1C40F)
-        medals = ["🥇","🥈","🥉"]
-        lines  = []
-        for i, (uid, xp) in enumerate(sorted_users):
-            level, title, _, _ = _get_level(xp)
-            medal  = medals[i] if i < 3 else f"`#{i+1}`"
-            member = ctx.guild.get_member(int(uid))
-            name   = member.display_name if member else f"User {uid}"
-            lines.append(f"{medal} **{name}** — Lv.{level} {title} • {xp:,} XP")
-
-        e.description = "\n".join(lines) if lines else "No XP data yet. Start chatting!"
-        e.set_footer(text=f"{ctx.guild.name} XP Leaderboard")
-        await ctx.send(embed=e)
-
+  
     # ── gl.top_workers ────────────────────────────────────────────────────
 
     @commands.command(name="top_workers")
