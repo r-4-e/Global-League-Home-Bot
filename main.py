@@ -46,7 +46,8 @@ COGS = [
     "cogs.progression",
     "cogs.mystery_event",
     "cogs.tape",
-    "cogs.verification",  # NEW
+    "cogs.verification",
+    "cogs.qotd", # NEW
 ]
 
 REQUIRED_INTENTS = discord.Intents(
