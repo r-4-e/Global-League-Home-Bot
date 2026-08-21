@@ -46,6 +46,7 @@ COGS = [
     "cogs.progression",
     "cogs.mystery_event",
     "cogs.tape",
+    "cogs.help_cog",
     "cogs.verification",
     "cogs.qotd",
     "cogs.admin_dm",
