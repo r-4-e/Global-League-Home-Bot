@@ -26,6 +26,7 @@ from database import db
 log = logging.getLogger("elura.admin_dm")
 
 OWNER_ID = 1485610704441577552
+GUILD_ID = 1515732114983878877
 
 # ── Suggestion discussion state ───────────────────────────────────────────────
 # Tracks whether owner is in "suggestion mode" in DMs
