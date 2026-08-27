@@ -29,7 +29,6 @@ logging.getLogger("discord.http").setLevel(logging.WARNING)
 
 COGS = [
     "cogs.moderation",
-    "cogs.automod",
     "cogs.logging_cog",
     "cogs.setup_cog",
     "cogs.search",
@@ -48,7 +47,6 @@ COGS = [
     "cogs.tape",
     "cogs.help_cog",
     "cogs.verification",
-    "cogs.qotd",
     "cogs.admin_dm",
 ]
 
