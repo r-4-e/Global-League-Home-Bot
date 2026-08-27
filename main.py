@@ -37,6 +37,7 @@ COGS = [
     "cogs.about",
     "cogs.warn_threshold",
     "cogs.help_cog",
+    "cogs.suggestions",
     "cogs.admin_dm",
 ]
 
