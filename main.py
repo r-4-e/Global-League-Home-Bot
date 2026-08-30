@@ -35,6 +35,7 @@ COGS = [
     "cogs.info",
     "cogs.utility",
     "cogs.about",
+    "cogs.stats",
     "cogs.warn_threshold",
     "cogs.help_cog",
     "cogs.suggestions",
