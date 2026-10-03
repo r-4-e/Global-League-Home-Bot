@@ -142,7 +142,34 @@ def _dm_embed(
     e.set_footer(text="If you believe this was a mistake, contact a staff member.")
     return e
 
+SUPPORT_SERVER_INVITE = "https://discord.gg/G689fEuW9"
 
+def _appeal_embed(action: str) -> discord.Embed:
+    action_word = {
+        "KICK":    "kicked",
+        "BAN":     "banned",
+        "SOFTBAN": "banned",
+        "MUTE":    "muted",
+        "TIMEOUT": "timed out",
+    }.get(action, "actioned")
+    e = discord.Embed(
+        title="⚖️ Do you think this was unfair?",
+        description=(
+            f"If you believe you were wrongfully {action_word}, "
+            f"you can appeal in our support server.\n\n"
+            f"A staff member will review your case there.\n\n"
+            f"**[📩 Appeal here]({SUPPORT_SERVER_INVITE})**"
+        ),
+        color=0x5865F2,
+    )
+    e.set_footer(text="Global League — Appeals & Support")
+    return e
+
+async def _dm_appeal(user, action: str):
+    try:
+        await user.send(embed=_appeal_embed(action))
+    except (discord.Forbidden, discord.HTTPException):
+        pass
 # ═══════════════════════════════════════════════════════════════════════════════
 # Cog
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -406,7 +433,9 @@ class ModerationCog(commands.Cog, name="Moderation"):
                       extra_lines=[f"**Duration:** {duration or 'Permanent'}"]),
         )
         await ctx.send(embed=embeds.success("Member Muted", f"{user.mention} muted. Case #{case_id}"))
-
+        
+        await _dm_appeal(user, "MUTE")
+      
     @commands.command(name="unmute")
     @commands.guild_only()
     async def unmute(self, ctx, user: discord.Member, *, reason: str = None):
@@ -455,7 +484,8 @@ class ModerationCog(commands.Cog, name="Moderation"):
         await ctx.send(embed=embeds.success(
             "Timeout Applied", f"{user.mention} timed out for {duration}. Case #{case_id}"
         ))
-
+        await _dm_appeal(user, "TIMEOUT")
+      
     @commands.command(name="untimeout")
     @commands.guild_only()
     async def untimeout(self, ctx, user: discord.Member, *, reason: str = None):
@@ -489,12 +519,13 @@ class ModerationCog(commands.Cog, name="Moderation"):
             await ctx.guild.kick(user, reason=f"Kicked by {ctx.author}: {reason}")
         except discord.Forbidden:
             await ctx.send(embed=embeds.error("Failed", "I couldn't kick that user.")); return
-
+          
         case_id = await _create_and_log(
             self.bot, ctx.guild,
             user=user, moderator=ctx.author, action="KICK", reason=reason,
         )
         await ctx.send(embed=embeds.success("Member Kicked", f"{user} was kicked. Case #{case_id}"))
+        await _dm_appeal(user, "KICK")
 
     # ── ban ───────────────────────────────────────────────────────────────────
 
@@ -522,7 +553,8 @@ class ModerationCog(commands.Cog, name="Moderation"):
             user=user, moderator=ctx.author, action="BAN", reason=reason,
         )
         await ctx.send(embed=embeds.success("Member Banned", f"{user} was banned. Case #{case_id}"))
-
+        await _dm_appeal(user, "BAN")
+      
     @commands.command(name="unban")
     @commands.guild_only()
     async def unban(self, ctx, user_id: int, *, reason: str = None):
@@ -564,6 +596,7 @@ class ModerationCog(commands.Cog, name="Moderation"):
         )
         await ctx.send(embed=embeds.success("Member Softbanned",
             f"{user} softbanned. Case #{case_id}"))
+        await _dm_appeal(user, "SOFTBAN")
 
     # ── massban / masskick ────────────────────────────────────────────────────
 
