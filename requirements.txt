@@ -4,3 +4,4 @@ python-dotenv
 aiohttp
 python-dateutil
 audioop-lts
+httpx
