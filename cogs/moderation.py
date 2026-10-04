@@ -136,6 +136,9 @@ def _action_color(action: str) -> int:
 
 # ── DM embed builders ─────────────────────────────────────────────────────────
 
+APPEAL_ACTIONS = {"KICK", "BAN", "SOFTBAN", "MUTE", "TIMEOUT"}
+SUPPORT_SERVER_INVITE = "https://discord.gg/G689fEuW9"
+
 def _dm_embed(
     guild_name: str,
     action: str,
@@ -146,7 +149,7 @@ def _dm_embed(
     """Standard DM embed sent to users when a mod action is taken against them."""
     e = discord.Embed(
         title=f"📋 Moderation Notice — {guild_name}",
-        description=f"A moderation action has been taken on your account.",
+        description="A moderation action has been taken on your account.",
         color=_action_color(action),
         timestamp=datetime.now(timezone.utc),
     )
@@ -154,13 +157,33 @@ def _dm_embed(
     if case_id:
         e.add_field(name="Case #", value=str(case_id), inline=True)
     e.add_field(name="Reason", value=reason or "No reason provided", inline=False)
+
     if extra_lines:
         for line in extra_lines:
             e.add_field(name="​", value=line, inline=False)
+
+    # Automatically add support server link ONLY for kick, ban, softban, mute, and timeout
+    if action in APPEAL_ACTIONS:
+        action_word = {
+            "KICK": "kicked",
+            "BAN": "banned",
+            "SOFTBAN": "banned",
+            "MUTE": "muted",
+            "TIMEOUT": "timed out",
+        }.get(action, "actioned")
+
+        e.add_field(
+            name="⚖️ Appeal / Support",
+            value=(
+                f"If you believe you were wrongfully {action_word}, "
+                f"you can appeal in our support server:\n"
+                f"**[📩 Join Support Server]({SUPPORT_SERVER_INVITE})**"
+            ),
+            inline=False,
+        )
+
     e.set_footer(text="If you believe this was a mistake, contact a staff member.")
     return e
-
-SUPPORT_SERVER_INVITE = "https://discord.gg/G689fEuW9"
 
 def _appeal_embed(action: str) -> discord.Embed:
     action_word = {
@@ -461,16 +484,14 @@ class ModerationCog(commands.Cog, name="Moderation"):
             expires_at=expires_at, extra_data={"muted_role_id": muted_role_id}, extra_fields=extra,
         )
         dm_embed = _dm_embed(
-            ctx.guild.name,
-            "MUTE",
-            reason,
-            case_id=case_id,
-            extra_lines=[f"**Duration:** {duration or 'Permanent'}"],
-        )
-        _add_appeal_to_embed(dm_embed, "MUTE")
-        await _dm_user(user, dm_embed)
-        await ctx.send(embed=embeds.success("Member Muted", f"{user.mention} muted. Case #{case_id}"))
-        
+    ctx.guild.name,
+    "MUTE",
+    reason,
+    case_id=case_id,
+    extra_lines=[f"**Duration:** {duration or 'Permanent'}"],
+)
+await _dm_user(user, dm_embed)
+
         
       
     @commands.command(name="unmute")
@@ -514,14 +535,14 @@ class ModerationCog(commands.Cog, name="Moderation"):
             expires_at=expires_at, extra_fields=[("Duration", duration, True)],
         )
         dm_embed = _dm_embed(
-            ctx.guild.name,
-            "TIMEOUT",
-            reason,
-            case_id=case_id,
-            extra_lines=[f"**Duration:** {duration}"],
-        )
-        _add_appeal_to_embed(dm_embed, "TIMEOUT")
-        await _dm_user(user, dm_embed)
+    ctx.guild.name,
+    "TIMEOUT",
+    reason,
+    case_id=case_id,
+    extra_lines=[f"**Duration:** {duration}"],
+)
+await _dm_user(user, dm_embed)
+
         await ctx.send(embed=embeds.success(
             "Timeout Applied", f"{user.mention} timed out for {duration}. Case #{case_id}"
         ))
@@ -555,8 +576,8 @@ class ModerationCog(commands.Cog, name="Moderation"):
 
         # DM BEFORE kick so the message reaches them while still in the server
         dm_embed = _dm_embed(ctx.guild.name, "KICK", reason)
-        _add_appeal_to_embed(dm_embed, "KICK")
-        await _dm_user(user, dm_embed)
+ await _dm_user(user, dm_embed)
+
 
         try:
             await ctx.guild.kick(user, reason=f"Kicked by {ctx.author}: {reason}")
@@ -582,8 +603,7 @@ class ModerationCog(commands.Cog, name="Moderation"):
 
         # DM BEFORE ban so the message reaches them while still in the server
         dm_embed = _dm_embed(ctx.guild.name, "BAN", reason)
-        _add_appeal_to_embed(dm_embed, "BAN")
-        await _dm_user(user, dm_embed)
+await _dm_user(user, dm_embed)
 
         try:
             await ctx.guild.ban(
