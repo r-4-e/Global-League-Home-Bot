@@ -30,7 +30,7 @@ OWNER_ID = 1485610704441577552
 GEMINI_API_KEY = "AIzaSyDZtMUyi_KG1uWNbpR_X785MUNvwCfOaoE"
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-1.5-flash:generateContent?key=" + GEMINI_API_KEY
+    "gemini-1.5-flash-latest:generateContent?key=" + GEMINI_API_KEY
 )
 
 _SYSTEM_PROMPT = (
