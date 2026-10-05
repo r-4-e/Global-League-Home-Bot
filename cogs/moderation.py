@@ -127,7 +127,6 @@ def _dm_embed(
     case_id: int | None = None,
     extra_lines: list[str] | None = None,
 ) -> discord.Embed:
-    """Standard DM embed sent to users when a mod action is taken against them."""
     e = discord.Embed(
         title=f"📋 Moderation Notice — {guild_name}",
         description=f"A moderation action has been taken on your account.",
@@ -141,11 +140,12 @@ def _dm_embed(
     if extra_lines:
         for line in extra_lines:
             e.add_field(name="​", value=line, inline=False)
-    e.add_field(
-        name="​",
-        value=f"**⚖️ Think this was unfair?** [Appeal here]({SUPPORT_SERVER_INVITE})",
-        inline=False,
-    )
+    if action in ("MUTE", "TIMEOUT", "KICK", "BAN", "SOFTBAN"):
+        e.add_field(
+            name="​",
+            value=f"**⚖️ Think this was unfair?** [Appeal here]({SUPPORT_SERVER_INVITE})",
+            inline=False,
+        )
     e.set_footer(text="Global League — Appeals & Support")
     return e
 
