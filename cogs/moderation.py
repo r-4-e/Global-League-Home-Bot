@@ -137,7 +137,7 @@ def _dm_embed(
     if case_id:
         e.add_field(name="Case #", value=str(case_id), inline=True)
     e.add_field(name="Reason", value=reason or "No reason provided", inline=False)
-    if extra_lines:
+        if extra_lines:
         for line in extra_lines:
             e.add_field(name="​", value=line, inline=False)
     if action in ("MUTE", "TIMEOUT", "KICK", "BAN", "SOFTBAN"):
@@ -145,7 +145,7 @@ def _dm_embed(
             name="​",
             value=f"**⚖️ Think this was unfair?** [Appeal here]({SUPPORT_SERVER_INVITE})",
             inline=False,
-        )
+          )
     e.set_footer(text="Global League — Appeals & Support")
     return e
 
