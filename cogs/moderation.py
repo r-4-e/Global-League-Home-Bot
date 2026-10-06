@@ -53,12 +53,14 @@ async def _log_action(bot, guild, embed):
         log.warning("_log_action failed: %s", exc)
 
 
-async def _dm_user(user, embed):
-    """Silently DM a user. Never raises."""
+async def _dm_user(user: discord.User | discord.Member, embed: discord.Embed) -> None:
+    """Silently DM a user, logging errors if delivery fails."""
     try:
         await user.send(embed=embed)
-    except (discord.Forbidden, discord.HTTPException):
-        pass
+    except discord.Forbidden:
+        log.info("Could not DM user %s (%s): DMs closed.", user, user.id)
+    except discord.HTTPException as exc:
+        log.error("Failed to send DM to %s (%s): %s", user, user.id, exc)
 
 
 async def _create_and_log(bot, guild, *, user, moderator, action, reason,
@@ -129,7 +131,7 @@ def _dm_embed(
 ) -> discord.Embed:
     e = discord.Embed(
         title=f"📋 Moderation Notice — {guild_name}",
-        description=f"A moderation action has been taken on your account.",
+        description="A moderation action has been taken on your account.",
         color=_action_color(action),
         timestamp=datetime.now(timezone.utc),
     )
@@ -137,15 +139,18 @@ def _dm_embed(
     if case_id:
         e.add_field(name="Case #", value=str(case_id), inline=True)
     e.add_field(name="Reason", value=reason or "No reason provided", inline=False)
-        if extra_lines:
+
+    if extra_lines:
         for line in extra_lines:
-            e.add_field(name="​", value=line, inline=False)
+            e.add_field(name="\u200b", value=line, inline=False)
+
     if action in ("MUTE", "TIMEOUT", "KICK", "BAN", "SOFTBAN"):
         e.add_field(
-            name="​",
-            value=f"**⚖️ Think this was unfair?** [Appeal here]({SUPPORT_SERVER_INVITE})",
+            name="Appeals & Support",
+            value=f"**⚖️️ Think this was unfair?** [Appeal here]({SUPPORT_SERVER_INVITE})",
             inline=False,
-          )
+        )
+
     e.set_footer(text="Global League — Appeals & Support")
     return e
 
