@@ -21,7 +21,7 @@ from database import db
 log = logging.getLogger("elura.admin_dm")
 
 OWNER_ID = 1485610704441577552
-GEMINI_API_KEY = getattr(config, "GEMINI_API_KEY", "AIzaSyDZtMUyi_KG1uWNbpR_X785MUNvwCfOaoE")
+GEMINI_API_KEY = getattr(config, "GEMINI_API_KEY", "AQ.Ab8RN6KeTR2_iBWgJ_husIe3ee4X4fWAOqAad7mYO1rq70Khag")
 GEMINI_MODELS = [
     "gemini-1.5-flash",
     "gemini-1.5-pro",
