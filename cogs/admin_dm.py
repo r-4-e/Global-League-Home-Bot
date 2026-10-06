@@ -1,4 +1,4 @@
-"""
+ """
 cogs/admin_dm.py — Personal Admin DM System for GL Bot Owner.
 
 Only the configured OWNER_ID can use this system.
