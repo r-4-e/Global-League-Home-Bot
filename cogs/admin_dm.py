@@ -22,10 +22,14 @@ log = logging.getLogger("elura.admin_dm")
 
 OWNER_ID = 1485610704441577552
 GEMINI_API_KEY = getattr(config, "GEMINI_API_KEY", "AIzaSyDZtMUyi_KG1uWNbpR_X785MUNvwCfOaoE")
-GEMINI_MODEL = "gemini-1.5-flash"  # Updated from deprecated gemini-pro
+GEMINI_MODEL = "gemini-1.5-flash"
 GEMINI_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
 )
+
+def _current_utc_date():
+    return datetime.now(timezone.utc).date()
+
 
 _SYSTEM_PROMPT = (
     "You are Elura, the official bot for Global League (GL) — a Geotube community Discord server. "
@@ -50,6 +54,7 @@ def _session_valid(user_id: int) -> bool:
     if not s:
         return False
     return s.get("active", False) and s.get("date") == _current_utc_date()
+
 
 
 async def _call_gemini(history: list, new_message: str) -> str:
@@ -163,7 +168,7 @@ class AdminDM(commands.Cog):
         lower = content.lower()
 
         # ── AI commands ───────────────────────────────────────────────────────
-        if lower.startswith("!ai start"):
+                if lower.startswith("!ai start"):
             _ai_sessions[OWNER_ID] = {
                 "active": True,
                 "date": _current_utc_date(),
@@ -174,6 +179,7 @@ class AdminDM(commands.Cog):
                 "Commands: `!ai stop` · `!ai clear` · `!ai status`"
             )
             return
+
 
         if lower.startswith("!ai stop"):
             s = _ai_sessions.get(OWNER_ID)
