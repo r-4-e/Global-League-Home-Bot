@@ -122,6 +122,8 @@ def _action_color(action: str) -> int:
 
 # ── DM embed builder ──────────────────────────────────────────────────────────
 
+SUPPORT_SERVER_INVITE = "https://discord.gg/G689fEuW9"
+
 def _dm_embed(
     guild_name: str,
     action: str,
@@ -139,18 +141,15 @@ def _dm_embed(
     if case_id:
         e.add_field(name="Case #", value=str(case_id), inline=True)
     e.add_field(name="Reason", value=reason or "No reason provided", inline=False)
-
     if extra_lines:
         for line in extra_lines:
-            e.add_field(name="\u200b", value=line, inline=False)
-
+            e.add_field(name="​", value=line, inline=False)
     if action in ("MUTE", "TIMEOUT", "KICK", "BAN", "SOFTBAN"):
         e.add_field(
-            name="Appeals & Support",
-            value=f"**⚖️️ Think this was unfair?** [Appeal here]({SUPPORT_SERVER_INVITE})",
+            name="​",
+            value=f"**⚖️ Think this was unfair?** [Appeal here]({SUPPORT_SERVER_INVITE})",
             inline=False,
         )
-
     e.set_footer(text="Global League — Appeals & Support")
     return e
 
