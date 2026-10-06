@@ -2,19 +2,13 @@
 cogs/admin_dm.py — Personal Admin DM System for GL Bot Owner.
 
 Only the configured OWNER_ID can use this system.
-
-Features:
-- Bot DMs owner on startup with full server stats
-- Owner can do all moderation via DM
-- Owner can chat with Gemini AI freely via !ai commands
-- Daily session reset at UTC midnight
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 import discord
@@ -27,10 +21,10 @@ from database import db
 log = logging.getLogger("elura.admin_dm")
 
 OWNER_ID = 1485610704441577552
-GEMINI_API_KEY = "AIzaSyDZtMUyi_KG1uWNbpR_X785MUNvwCfOaoE"
+GEMINI_API_KEY = getattr(config, "GEMINI_API_KEY", "AIzaSyDZtMUyi_KG1uWNbpR_X785MUNvwCfOaoE")
+GEMINI_MODEL = "gemini-1.5-flash"  # Updated from deprecated gemini-pro
 GEMINI_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-pro:generateContent?key=" + GEMINI_API_KEY
+    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
 )
 
 _SYSTEM_PROMPT = (
@@ -47,11 +41,15 @@ _SYSTEM_PROMPT = (
 _ai_sessions: dict[int, dict] = {}
 
 
+def _current_utc_date():
+    return datetime.now(timezone.utc).date()
+
+
 def _session_valid(user_id: int) -> bool:
     s = _ai_sessions.get(user_id)
     if not s:
         return False
-    return s["active"] and s["date"] == date.today()
+    return s.get("active", False) and s.get("date") == _current_utc_date()
 
 
 async def _call_gemini(history: list, new_message: str) -> str:
@@ -165,10 +163,10 @@ class AdminDM(commands.Cog):
         lower = content.lower()
 
         # ── AI commands ───────────────────────────────────────────────────────
-        if lower == "!ai start":
+        if lower.startswith("!ai start"):
             _ai_sessions[OWNER_ID] = {
                 "active": True,
-                "date": date.today(),
+                "date": _current_utc_date(),
                 "history": [],
             }
             await message.channel.send(
@@ -177,25 +175,25 @@ class AdminDM(commands.Cog):
             )
             return
 
-        if lower == "!ai stop":
+        if lower.startswith("!ai stop"):
             s = _ai_sessions.get(OWNER_ID)
             if s:
                 s["active"] = False
             await message.channel.send("🛑 AI session stopped.")
             return
 
-        if lower == "!ai clear":
+        if lower.startswith("!ai clear"):
             s = _ai_sessions.get(OWNER_ID)
             if s:
                 s["history"] = []
             await message.channel.send("🗑️ Conversation history cleared.")
             return
 
-        if lower == "!ai status":
+        if lower.startswith("!ai status"):
             s = _ai_sessions.get(OWNER_ID)
-            if not s or not s["active"]:
+            if not s or not s.get("active"):
                 await message.channel.send("💤 No active AI session. Type `!ai start` to begin.")
-            elif s["date"] != date.today():
+            elif s.get("date") != _current_utc_date():
                 await message.channel.send("🔄 Session expired (new UTC day). Type `!ai start` to begin.")
             else:
                 turns = len(s["history"]) // 2
